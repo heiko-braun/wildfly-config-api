@@ -17,6 +17,8 @@ import org.wildfly.config.invocation.Types;
 import org.wildfly.config.model.AddressTemplate;
 import org.wildfly.apigen.model.ResourceDescription;
 
+import java.beans.PropertyChangeListener;
+import java.beans.PropertyChangeSupport;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.Set;
@@ -70,7 +72,8 @@ public class SourceFactory {
             javaClass.addMethod()
                     .setConstructor(true)
                     .setPublic()
-                    .setBody("this.key = \""+metaData.getDescription().getSingletonName()+"\";");
+                    .setBody("this.key = \""+metaData.getDescription().getSingletonName()+"\";\n"
+                        +"this.pcs = new PropertyChangeSupport(this);");
         }
         else
         {
@@ -102,6 +105,8 @@ public class SourceFactory {
         javaClass.addImport(Address.class);
         javaClass.addImport(ModelNodeBinding.class);
 
+        javaClass.addImport(PropertyChangeListener.class);
+        javaClass.addImport(PropertyChangeSupport.class);
 
         AnnotationSource<JavaClassSource> addressMeta = javaClass.addAnnotation();
         addressMeta.setName("Address");
@@ -143,7 +148,10 @@ public class SourceFactory {
                             mutator.setPublic()
                                     .setName(name)
                                     .setReturnType("T")
-                                    .setBody("this." + name + " = value;\nreturn (T) this;")
+                                    .setBody("Object oldValue = this."+name+";\n"+
+                                            "this." + name + " = value;\n" +
+                                            "if(this.pcs!=null) this.pcs.firePropertyChange(\""+name+"\", oldValue, value);\n" +
+                                            "return (T) this;")
                                     .addAnnotation("SuppressWarnings").setStringValue("unchecked");
 
                             AnnotationSource<JavaClassSource> bindingMeta = accessor.addAnnotation();
@@ -155,6 +163,28 @@ public class SourceFactory {
                     } //else System.err.println(att.getValue());
                 }
         );
+
+
+        // property change listeners
+        javaClass.addField()
+                .setName("pcs")
+                .setType(PropertyChangeSupport.class)
+                .setPrivate();
+
+        final MethodSource<JavaClassSource> listenerAdd = javaClass.addMethod();
+        listenerAdd.getJavaDoc().setText("Adds a property change listener");
+        listenerAdd.setPublic()
+                .setName("addPropertyChangeListener")
+                .addParameter(PropertyChangeListener.class, "listener");
+        listenerAdd.setBody("if(null==this.pcs) this.pcs = new PropertyChangeSupport(this);\n"+
+                "this.pcs.addPropertyChangeListener(listener);");
+
+        final MethodSource<JavaClassSource> listenerRemove = javaClass.addMethod();
+        listenerRemove.getJavaDoc().setText("Removes a property change listener");
+        listenerRemove.setPublic()
+                .setName("removePropertyChangeListener")
+                .addParameter(PropertyChangeListener.class, "listener");
+        listenerRemove.setBody("if(this.pcs!=null) this.pcs.removePropertyChangeListener(listener);");
 
         return javaClass;
     }

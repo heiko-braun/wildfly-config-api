@@ -13,7 +13,12 @@ import org.wildfly.swarm.config.datasources.subsystem.dataSource.DataSource;
 import org.wildfly.swarm.config.datasources.subsystem.dataSource.connectionProperties.ConnectionProperties;
 import org.wildfly.swarm.config.logging.subsystem.RootLoggerRoot;
 
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.beans.PropertyChangeSupport;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.*;
 
@@ -29,14 +34,15 @@ public class IntegrationTestCase {
     @BeforeClass
     public static void setup() throws Exception {
         String configDirectory = System.getProperty("APIGEN_CFG_DIR");
-        Assert.assertNotNull(configDirectory, "No configuration given");
+        Assert.assertNotNull("No configuration given. Please make sure the 'APIGEN_CFG_DIR' property is set", configDirectory);
         config = Config.fromJson(configDirectory + "/generator-config.json");
         client = ClientFactory.createClient(config);
     }
 
     @AfterClass
     public static void teardown() throws Exception {
-        client.close();
+        if(client!=null)
+            client.close();
     }
 
     /**
@@ -181,5 +187,33 @@ public class IntegrationTestCase {
 
         ModelNode removalRsp = client.execute(removeOp);
         Assert.assertEquals("success", removalRsp.get("outcome").asString());
+    }
+
+    @Test
+    public void testPropertyChanges() throws Exception {
+        DataSource dataSource = new DataSource("TestDS");
+        dataSource.jndiName("java:/foo/bar/DS");
+        dataSource.userName("john.doe");
+        dataSource.password("password");
+
+        Map<String, Object> changeset = new HashMap<>();
+        dataSource.addPropertyChangeListener(evt -> {
+            changeset.put(evt.getPropertyName(), evt.getNewValue());
+        });
+
+        dataSource.userName("john.doe2");
+        dataSource.password("password2");
+
+        Assert.assertEquals(2, changeset.size());
+
+        EntityAdapter<DataSource> entityAdapter = new EntityAdapter<>(DataSource.class);
+        ModelNode operation = entityAdapter.fromChangeset(changeset);
+        System.out.println(operation);
+
+        Assert.assertTrue(operation.hasDefined(OP));
+        Assert.assertTrue(operation.hasDefined(ADDRESS));
+
+        Assert.assertEquals(2, operation.get(STEPS).asList().size());
+
     }
 }
