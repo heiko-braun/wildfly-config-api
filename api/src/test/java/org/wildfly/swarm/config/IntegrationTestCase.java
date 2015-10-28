@@ -207,7 +207,7 @@ public class IntegrationTestCase {
         Assert.assertEquals(2, changeset.size());
 
         EntityAdapter<DataSource> entityAdapter = new EntityAdapter<>(DataSource.class);
-        ModelNode operation = entityAdapter.fromChangeset(changeset);
+        ModelNode operation = entityAdapter.fromChangeset(changeset, "TestDS");
         System.out.println(operation);
 
         Assert.assertTrue(operation.hasDefined(OP));
